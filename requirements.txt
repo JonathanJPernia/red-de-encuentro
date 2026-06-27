@@ -1,0 +1,11 @@
+# Producción — API + worker + migraciones
+fastapi>=0.115.0,<0.116.0
+uvicorn[standard]>=0.32.0,<0.35.0
+sqlalchemy>=2.0.36,<2.1.0
+alembic>=1.14.0,<2.0.0
+psycopg2-binary>=2.9.10,<3.0.0
+python-telegram-bot>=21.9,<22.0
+httpx>=0.28.0,<0.29.0
+rapidfuzz>=3.10.0,<4.0.0
+pydantic-settings>=2.6.0,<3.0.0
+beautifulsoup4>=4.12.3,<5.0.0

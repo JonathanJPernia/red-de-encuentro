@@ -1,0 +1,12 @@
+[
+  {
+    "id": 2,
+    "nombre_completo": "Francys Arocha (CI: V-11.144.145)",
+    "estado_persona": "Desaparecido",
+    "detalles_emergencia": "Última vez vista en el edificio Mar de Leva",
+    "created_at": "2026-06-25T16:08:43.480409+00:00",
+    "direccion_exacta": "Caraballeda, La Guaira",
+    "estado_id": 21,
+    "municipio_id": 390
+  }
+]
