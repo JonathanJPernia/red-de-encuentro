@@ -1,9 +1,20 @@
 import logging
+from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.bot.telegram_webhook import (
+    build_webhook_url,
+    delete_webhook,
+    is_telegram_configured,
+    process_telegram_update,
+    set_webhook,
+    shutdown_telegram_application,
+)
 from app.config import get_settings
 from app.database import get_db
 from app.schemas.search import SearchResponse
@@ -18,12 +29,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await shutdown_telegram_application()
+
+
 app = FastAPI(
     title="Bot TL - Desaparecidos",
     description="Backend para búsqueda de personas en listas públicas de desaparecidos",
     version="0.1.0",
     debug=settings.debug,
+    lifespan=lifespan,
 )
+
+
+class SetWebhookRequest(BaseModel):
+    webhook_url: str | None = None
+
+
+def _verify_admin_secret(request: Request) -> None:
+    current = get_settings()
+    if not current.admin_secret:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    provided = request.headers.get("X-Admin-Secret")
+    if not provided or provided != current.admin_secret:
+        raise HTTPException(status_code=403, detail="No autorizado")
 
 
 @app.get("/health")
@@ -58,3 +90,41 @@ def search_people(
     except Exception:
         logger.exception("Error en búsqueda q=%s", mask_query_for_log(q))
         raise HTTPException(status_code=500, detail="Error interno al buscar") from None
+
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request) -> dict[str, bool]:
+    try:
+        update_data: dict[str, Any] = await request.json()
+        await process_telegram_update(update_data)
+    except Exception:
+        logger.exception("Error procesando webhook de Telegram")
+    return {"ok": True}
+
+
+@app.get("/telegram/status")
+def telegram_status() -> dict[str, bool | str]:
+    return {
+        "mode": "webhook",
+        "configured": is_telegram_configured(),
+    }
+
+
+@app.post("/admin/telegram/set-webhook")
+def admin_set_webhook(
+    request: Request,
+    body: SetWebhookRequest = SetWebhookRequest(),
+) -> dict[str, Any]:
+    _verify_admin_secret(request)
+    webhook_url = body.webhook_url or build_webhook_url()
+    logger.info("Admin: configurando webhook de Telegram")
+    result = set_webhook(webhook_url)
+    return {"ok": True, "webhook_url": webhook_url, "result": result}
+
+
+@app.post("/admin/telegram/delete-webhook")
+def admin_delete_webhook(request: Request) -> dict[str, Any]:
+    _verify_admin_secret(request)
+    logger.info("Admin: eliminando webhook de Telegram")
+    result = delete_webhook()
+    return {"ok": True, "result": result}

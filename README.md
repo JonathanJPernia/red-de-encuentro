@@ -486,3 +486,112 @@ curl "https://TU_API.railway.app/search?q=maria+perez"
 | `GET /sources/health` | Estado de fuentes externas (sin secrets) |
 
 Configura Railway health check del servicio API contra `/health`.
+
+## Telegram webhook en Render Free (Fase 10)
+
+En Render **Free** no hay Background Worker de pago. El bot corre **dentro del mismo Web Service** vía webhook.
+
+**API en producción:** https://red-de-encuentro-api.onrender.com
+
+### Arquitectura
+
+| Componente | Rol |
+|------------|-----|
+| Web Service Render | FastAPI + `POST /telegram/webhook` |
+| Telegram | Envía updates al webhook |
+| Polling (`telegram_bot.py`) | **Solo desarrollo local** |
+
+**Start Command (Render):**
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+No levantar polling en producción.
+
+### Variables de entorno (Render)
+
+```env
+APP_ENV=production
+DATABASE_URL=...   # desde PostgreSQL de Render
+TELEGRAM_BOT_TOKEN=tu_token_de_botfather
+PUBLIC_BASE_URL=https://red-de-encuentro-api.onrender.com
+ADMIN_SECRET=un_secreto_largo_y_aleatorio
+
+ENABLE_EXTERNAL_SOURCES=true
+# ... resto de flags de fuentes (igual que local)
+```
+
+### Paso 1 — Deploy del Web Service
+
+1. Conecta el repo en Render.
+2. Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+3. Agrega PostgreSQL y variables de entorno.
+4. Corre migraciones: `python -m app.scripts.run_migrations`
+
+### Paso 2 — Registrar webhook en Telegram
+
+**Opción A — Desde tu máquina (si tienes `.env` con token):**
+
+```bash
+python -m app.scripts.set_telegram_webhook
+```
+
+**Opción B — Sin shell en Render (endpoint admin):**
+
+```bash
+curl -X POST "https://red-de-encuentro-api.onrender.com/admin/telegram/set-webhook" \
+  -H "X-Admin-Secret: TU_ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+O con URL explícita:
+
+```bash
+curl -X POST "https://red-de-encuentro-api.onrender.com/admin/telegram/set-webhook" \
+  -H "X-Admin-Secret: TU_ADMIN_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"webhook_url":"https://red-de-encuentro-api.onrender.com/telegram/webhook"}'
+```
+
+Eliminar webhook:
+
+```bash
+curl -X POST "https://red-de-encuentro-api.onrender.com/admin/telegram/delete-webhook" \
+  -H "X-Admin-Secret: TU_ADMIN_SECRET"
+```
+
+O localmente: `python -m app.scripts.delete_telegram_webhook`
+
+### Paso 3 — Verificar
+
+```bash
+curl https://red-de-encuentro-api.onrender.com/telegram/status
+# → {"mode":"webhook","configured":true}
+```
+
+Luego escribe al bot en Telegram: `/start` y una búsqueda.
+
+### Endpoints Telegram
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/telegram/webhook` | Recibe updates de Telegram |
+| `GET` | `/telegram/status` | Modo webhook + si hay token configurado |
+| `POST` | `/admin/telegram/set-webhook` | Registra webhook (requiere `X-Admin-Secret`) |
+| `POST` | `/admin/telegram/delete-webhook` | Elimina webhook (requiere `X-Admin-Secret`) |
+
+### Seguridad
+
+- Sin `ADMIN_SECRET`, los endpoints `/admin/telegram/*` responden **404**.
+- Nunca expongas `TELEGRAM_BOT_TOKEN` ni `ADMIN_SECRET` en logs o respuestas.
+- Las búsquedas en logs usan `mask_query_for_log`.
+
+### Desarrollo local
+
+Polling solo para pruebas locales:
+
+```bash
+python -m app.bot.telegram_bot
+```

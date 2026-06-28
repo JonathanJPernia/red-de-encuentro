@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     app_port: int = 8000
     debug: bool = False
     telegram_bot_token: str = ""
+    public_base_url: str = ""
+    admin_secret: str = ""
 
     enable_external_sources: bool = False
     enable_red_ayuda_venezuela: bool = True
