@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from app.sources.http_debug import raise_for_status_logged
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 10.0
@@ -23,10 +25,13 @@ class SupabaseClient:
         base_url: str,
         anon_key: str,
         timeout: float = DEFAULT_TIMEOUT,
+        *,
+        source_name: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.anon_key = anon_key
         self.timeout = timeout
+        self.source_name = source_name or self.base_url
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -53,7 +58,7 @@ class SupabaseClient:
             try:
                 with httpx.Client(timeout=self.timeout) as client:
                     response = client.request(method, url, headers=self._headers(), **kwargs)
-                    response.raise_for_status()
+                    raise_for_status_logged(self.source_name, response)
                     return response
             except Exception as exc:
                 last_error = exc

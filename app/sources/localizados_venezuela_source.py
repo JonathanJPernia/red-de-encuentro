@@ -22,6 +22,7 @@ from app.services.normalize_service import (
 )
 from app.services.query_validation import validate_search_query
 from app.sources.base_external_source import BaseExternalSource, ExternalRecord
+from app.sources.http_debug import raise_for_status_logged
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class LocalizadosVenezuelaSource(BaseExternalSource):
             try:
                 with httpx.Client(timeout=self.timeout) as client:
                     response = client.get(url, headers=headers, params=params)
-                    response.raise_for_status()
+                    raise_for_status_logged(self.source_name, response)
                     data = response.json()
                     if not isinstance(data, dict):
                         raise ValueError("Respuesta JSON inválida")

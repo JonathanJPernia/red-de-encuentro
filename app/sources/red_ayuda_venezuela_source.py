@@ -56,6 +56,7 @@ class RedAyudaVenezuelaSource(BaseExternalSource):
         self.client = SupabaseClient(
             base_url=settings.red_ayuda_supabase_url,
             anon_key=settings.red_ayuda_supabase_anon_key,
+            source_name=self.source_name,
         )
 
     def is_configured(self) -> bool:

@@ -52,6 +52,7 @@ class EmergenciaJochSource(BaseExternalSource):
         self.client = SupabaseClient(
             base_url=settings.emergencia_joch_supabase_url,
             anon_key=settings.emergencia_joch_supabase_anon_key,
+            source_name=self.source_name,
         )
 
     def is_configured(self) -> bool:
