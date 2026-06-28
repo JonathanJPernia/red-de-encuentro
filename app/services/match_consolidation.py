@@ -47,17 +47,17 @@ def latest_published_at(sources: list[SourceMatch]) -> datetime | None:
 
 
 def merge_sources(
-    left: list[SourceMatch],
-    right: list[SourceMatch],
+    *source_lists: list[SourceMatch],
 ) -> list[SourceMatch]:
     seen: set[tuple[str, str | None]] = set()
     merged: list[SourceMatch] = []
-    for source in left + right:
-        key = (source.name, source.source_url)
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(source)
+    for sources in source_lists:
+        for source in sources:
+            key = (source.name, source.source_url)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(source)
     return merged
 
 
@@ -158,7 +158,7 @@ def consolidate_group(group: list[PersonMatch]) -> PersonMatch:
 def finalize_match(match: PersonMatch) -> PersonMatch:
     statuses = [source.status for source in match.sources]
     status, status_conflict = consolidate_status(statuses) if statuses else (match.status, False)
-    sources = merge_sources(match.sources, [])
+    sources = merge_sources(match.sources)
 
     return PersonMatch(
         full_name=match.full_name,

@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.bot.rate_limit import InMemoryRateLimiter
-from app.bot.response_format import format_bot_match, needs_more_specific_query
+from app.bot.response_format import BOT_DISCLAIMER, format_bot_match, needs_more_specific_query
 from app.main import app
 from app.schemas.search import PersonMatch, SourceMatch
 from app.services.privacy_log import mask_query_for_log
@@ -115,11 +115,12 @@ def test_bot_format_does_not_show_raw_data() -> None:
     text = format_bot_match(1, match)
     assert "raw_data" not in text
     assert "5678" not in text
-    assert "Nombre: Juan Pérez" in text
-    assert "Estado: Desaparecido/a (según fuente)" in text
-    assert "Fuentes encontradas: 1" in text
-    assert "Enlace (Fuente Test):" in text
+    assert "1️⃣ Juan Pérez" in text
+    assert "🟠 Estado: Desaparecido/a" in text
+    assert "📚 Fuentes: 1" in text
+    assert "🔗 Fuente Test" in text
     assert "missing" not in text
+    assert BOT_DISCLAIMER not in text
 
 
 def test_needs_more_specific_query() -> None:

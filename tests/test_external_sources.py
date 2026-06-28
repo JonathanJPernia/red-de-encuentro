@@ -77,7 +77,7 @@ def test_external_source_failure_does_not_break_search(db_session, monkeypatch) 
             "search",
             return_value=[
                 PersonMatch(
-                    full_name="Remoto Test",
+                    full_name="zzzz no local match zzzz",
                     document_id_last4="9999",
                     confidence_score=95.0,
                     sources=[],
@@ -86,7 +86,7 @@ def test_external_source_failure_does_not_break_search(db_session, monkeypatch) 
         ):
             service = SearchService(db_session)
             response = service.search("zzzz-no-local-match-zzzz")
-            assert any(match.full_name == "Remoto Test" for match in response.matches)
+            assert any(match.full_name == "zzzz no local match zzzz" for match in response.matches)
 
 
 def test_supabase_client_timeout_raises_after_retry() -> None:

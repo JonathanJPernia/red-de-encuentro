@@ -4,9 +4,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.bot.rate_limit import InMemoryRateLimiter
-from app.bot.response_format import format_bot_match, needs_more_specific_query
+from app.bot.response_format import format_search_response
 from app.database import SessionLocal
-from app.schemas.search import PersonMatch
 from app.services.privacy_log import mask_query_for_log
 from app.services.query_validation import validate_search_query
 from app.services.search_service import BOT_MAX_RESULTS, SearchService
@@ -20,24 +19,7 @@ RATE_LIMIT_MESSAGE = (
     "Has hecho muchas búsquedas seguidas. Intenta de nuevo en unos minutos."
 )
 
-LOW_CONFIDENCE_HINT = (
-    "Encontré varias coincidencias posibles. "
-    "Prueba con nombre completo o cédula para mejorar la búsqueda."
-)
-
 telegram_rate_limiter = InMemoryRateLimiter(max_calls=10, period_seconds=300)
-
-
-def format_search_response(matches: list[PersonMatch]) -> str:
-    blocks = ["Encontré posibles coincidencias:\n"]
-    if needs_more_specific_query(matches):
-        blocks.insert(0, f"{LOW_CONFIDENCE_HINT}\n")
-
-    for index, match in enumerate(matches, start=1):
-        blocks.append(format_bot_match(index, match))
-        blocks.append("")
-
-    return "\n".join(blocks).strip() + DISCLAIMER
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

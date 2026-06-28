@@ -136,11 +136,11 @@ def test_bot_shows_single_consolidated_card() -> None:
 
     text = format_bot_match(1, consolidated)
 
-    assert "Nombre: Juan Pérez" in text
-    assert text.count("Nombre:") == 1
-    assert "Fuentes encontradas: 2" in text
-    assert "Estado: Localizado/a (según fuente)" in text
-    assert "found" not in text.lower() or "según fuente" in text
+    assert "1️⃣ Juan Pérez" in text
+    assert text.count("1️⃣") == 1
+    assert "📚 Fuentes: 2" in text
+    assert "🟢 Estado: Localizado/a" in text
+    assert "found" not in text
 
 
 def test_bot_shows_status_conflict_warning() -> None:
@@ -166,5 +166,5 @@ def test_bot_shows_max_three_links() -> None:
     )
 
     text = format_bot_match(1, match)
-    assert text.count("Enlace (") == BOT_MAX_SOURCE_LINKS
+    assert text.count("🔗 Fuente") == BOT_MAX_SOURCE_LINKS
     assert "https://example.com/4" not in text
