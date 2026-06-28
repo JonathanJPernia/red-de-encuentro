@@ -12,6 +12,8 @@ SOURCE_HEALTH_LABELS_ES = {
     "disabled": "Desactivada",
     "not_configured": "Sin configurar",
     "ready": "Operativa",
+    "healthy": "Operativa",
+    "degraded": "Degradada temporalmente",
 }
 
 INFORMATIONAL_DISCLAIMER = (

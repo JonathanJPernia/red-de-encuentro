@@ -155,7 +155,9 @@ def admin_dashboard_data(
 ) -> dict[str, Any]:
     verify_admin_secret(request)
     logger.info("Admin: dashboard-data days=%s", days)
-    return get_admin_stats(db, days=days)
+    payload = get_admin_stats(db, days=days)
+    payload["sources_health"] = get_sources_health()["sources"]
+    return payload
 
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)

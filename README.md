@@ -659,3 +659,33 @@ También disponible:
 - Header alternativo: `X-Admin-Secret: TU_ADMIN_SECRET`
 
 Muestra totales, usuarios únicos, Telegram vs API, top consultas enmascaradas, búsquedas por día y errores recientes. Sin exponer tokens, IPs, IDs de Telegram ni cédulas completas.
+
+## Source degradation (Fase 14)
+
+Algunas fuentes externas pueden bloquear peticiones desde datacenters (p. ej. Render) con **Cloudflare Challenge** u otros WAF. El **Source Health Manager** detecta esos fallos y marca la fuente como **degraded** temporalmente para no saturarla con reintentos.
+
+TTL aproximados por motivo:
+
+| Motivo | TTL |
+|--------|-----|
+| `cloudflare_challenge` | 15 min |
+| `rate_limited` | 10 min |
+| `forbidden` | 5 min |
+| `timeout` | 2 min |
+
+Consultar estado:
+
+```bash
+curl https://red-de-encuentro-api.onrender.com/sources/health
+```
+
+Debug por búsqueda (admin):
+
+```bash
+curl "https://red-de-encuentro-api.onrender.com/search?q=Juan+Perez&debug=true" \
+  -H "X-Admin-Secret: TU_ADMIN_SECRET"
+```
+
+El dashboard privado también muestra el estado de fuentes en **Estado de fuentes**.
+
+No se intenta bypass de Cloudflare ni automatización con navegador headless.

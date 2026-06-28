@@ -97,7 +97,21 @@
     th { color: var(--muted); font-weight: 600; }
     .status { color: var(--green); font-size: 0.9rem; }
     .error { color: #f87171; }
+    .warn { color: #fbbf24; }
     .hidden { display: none; }
+    .sources-health { margin-top: 24px; }
+    .source-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--card-border);
+      font-size: 0.95rem;
+    }
+    .source-row:last-child { border-bottom: none; }
+    .source-name { font-weight: 600; min-width: 220px; }
+    .source-meta { color: var(--muted); }
     @media (max-width: 640px) {
       h1 { font-size: 1.4rem; }
       .card-value { font-size: 1.3rem; }
@@ -162,6 +176,12 @@
       </table>
       <p id="noErrors" class="subtitle hidden">No hay errores recientes en este periodo.</p>
     </div>
+
+    <div class="chart-card sources-health">
+      <h2>Estado de fuentes</h2>
+      <div id="sourcesHealth"></div>
+      <p id="noSourcesHealth" class="subtitle hidden">No hay datos de fuentes.</p>
+    </div>
   </div>
 
   <script>
@@ -171,6 +191,48 @@
 
     function setText(id, value) {
       document.getElementById(id).textContent = value;
+    }
+
+    function sourceIcon(status) {
+      if (status === "healthy") return "🟢";
+      if (status === "degraded") return "🟡";
+      if (status === "disabled" || status === "not_configured") return "⚪";
+      return "⚪";
+    }
+
+    function formatDegradedUntil(value) {
+      if (!value) return "";
+      const target = new Date(value);
+      const diffMs = target - Date.now();
+      if (diffMs <= 0) return "reintento disponible";
+      const minutes = Math.ceil(diffMs / 60000);
+      return `reintento en ${minutes} min`;
+    }
+
+    function renderSourcesHealth(sources) {
+      const container = document.getElementById("sourcesHealth");
+      const empty = document.getElementById("noSourcesHealth");
+      container.innerHTML = "";
+      if (!sources || !sources.length) {
+        empty.classList.remove("hidden");
+        return;
+      }
+      empty.classList.add("hidden");
+      sources.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "source-row";
+        const parts = [
+          `${sourceIcon(item.status)} ${item.name}`,
+          item.estado || item.status,
+        ];
+        if (item.reason) parts.push(item.reason);
+        if (item.status === "degraded") parts.push(formatDegradedUntil(item.degraded_until));
+        row.innerHTML = `
+          <span class="source-name">${parts[0]}</span>
+          <span class="source-meta">${parts.slice(1).join(" — ")}</span>
+        `;
+        container.appendChild(row);
+      });
     }
 
     function renderErrors(errors) {
@@ -289,6 +351,7 @@
         setText("average_response_ms", `${data.average_response_ms} ms`);
         renderCharts(data);
         renderErrors(data.recent_errors || []);
+        renderSourcesHealth(data.sources_health || []);
         status.textContent = `Actualizado · últimos ${data.period_days} días`;
       } catch (error) {
         status.textContent = "No se pudieron cargar las estadísticas.";

@@ -1,6 +1,6 @@
 from app.config import get_settings
-from app.sources.base_external_source import BaseExternalSource
 from app.services.status_labels import format_source_health_status_es
+from app.sources.base_external_source import BaseExternalSource
 from app.sources.desaparecidos_terremoto_venezuela_source import (
     DesaparecidosTerremotoVenezuelaSource,
 )
@@ -8,6 +8,7 @@ from app.sources.emergencia_joch_source import EmergenciaJochSource
 from app.sources.localizados_venezuela_source import LocalizadosVenezuelaSource
 from app.sources.red_ayuda_venezuela_source import RedAyudaVenezuelaSource
 from app.sources.registry import OPTIONAL_SOURCE_FLAGS
+from app.sources.source_health_manager import get_status
 from app.sources.venezuela_te_busca_source import VenezuelaTeBuscaSource
 
 EXTERNAL_SOURCE_CLASSES = [
@@ -30,7 +31,7 @@ def _is_enabled(settings, provider: BaseExternalSource) -> bool:
     return provider.is_configured()
 
 
-def _status_for_provider(settings, provider: BaseExternalSource, configured: bool) -> str:
+def _config_status(settings, provider: BaseExternalSource, configured: bool) -> str:
     if not settings.enable_external_sources:
         return "disabled"
 
@@ -40,7 +41,15 @@ def _status_for_provider(settings, provider: BaseExternalSource, configured: boo
 
     if not configured:
         return "not_configured"
-    return "ready"
+    return "healthy"
+
+
+def _merge_runtime_status(config_status: str, runtime: dict) -> str:
+    if config_status in {"disabled", "not_configured"}:
+        return config_status
+    if runtime.get("status") == "degraded":
+        return "degraded"
+    return "healthy"
 
 
 def get_sources_health() -> dict:
@@ -51,16 +60,22 @@ def get_sources_health() -> dict:
         provider = source_cls()
         configured = provider.is_configured()
         enabled = _is_enabled(settings, provider)
-        status = _status_for_provider(settings, provider, configured)
+        config_status = _config_status(settings, provider, configured)
+        runtime = get_status(provider.source_name)
+        status = _merge_runtime_status(config_status, runtime)
 
-        items.append(
-            {
-                "name": provider.source_name,
-                "enabled": enabled,
-                "configured": configured,
-                "status": status,
-                "estado": format_source_health_status_es(status),
-            }
-        )
+        item = {
+            "name": provider.source_name,
+            "enabled": enabled,
+            "configured": configured,
+            "status": status,
+            "estado": format_source_health_status_es(status),
+            "reason": runtime.get("reason") if status == "degraded" else None,
+            "degraded_until": runtime.get("degraded_until") if status == "degraded" else None,
+            "consecutive_failures": runtime.get("consecutive_failures", 0),
+            "last_success_at": runtime.get("last_success_at"),
+            "last_failure_at": runtime.get("last_failure_at"),
+        }
+        items.append(item)
 
     return {"sources": items}

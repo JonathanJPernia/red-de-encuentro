@@ -9,6 +9,38 @@ logger = logging.getLogger(__name__)
 FORBIDDEN_BODY_PREVIEW_CHARS = 500
 
 
+def detect_block_reason(
+    response: httpx.Response | None = None,
+    *,
+    exc: Exception | None = None,
+) -> str | None:
+    """Detecta motivo de bloqueo temporal (Cloudflare, rate limit, etc.)."""
+    if exc is not None:
+        if isinstance(exc, httpx.TimeoutException):
+            return "timeout"
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+            response = exc.response
+
+    if response is None:
+        return None
+
+    body = (response.text or "").lower()
+    server = response.headers.get("server", "").lower()
+    cf_mitigated = response.headers.get("cf-mitigated", "").lower()
+
+    if "cloudflare" in server or cf_mitigated == "challenge":
+        return "cloudflare_challenge"
+    if "just a moment" in body or "challenges.cloudflare.com" in body:
+        return "cloudflare_challenge"
+
+    if response.status_code == 429:
+        return "rate_limited"
+    if response.status_code == 403:
+        return "forbidden"
+
+    return None
+
+
 def log_forbidden_response(
     source_name: str,
     response: httpx.Response,

@@ -39,4 +39,6 @@ def test_search_response_includes_disclaimer() -> None:
 
 def test_source_health_status_labels() -> None:
     assert format_source_health_status_es("ready") == "Operativa"
+    assert format_source_health_status_es("healthy") == "Operativa"
+    assert format_source_health_status_es("degraded") == "Degradada temporalmente"
     assert format_source_health_status_es("disabled") == "Desactivada"

@@ -157,6 +157,8 @@ class SearchService:
                     name=provider.source_name,
                     enabled=False,
                     status="skipped",
+                    reason=None,
+                    degraded_until=None,
                     raw_count=0,
                     mapped_count=0,
                     filtered_count=0,
@@ -177,13 +179,21 @@ class SearchService:
             mask_query_for_log(query),
         )
 
-        status = "error" if stats.error else "ok"
+        if stats.skipped:
+            provider_status = "degraded"
+        elif stats.error:
+            provider_status = "error"
+        else:
+            provider_status = "ok"
+
         return _ProviderRunResult(
             matches=filtered,
             info=ProviderDebugInfo(
                 name=provider.source_name,
                 enabled=True,
-                status=status,
+                status=provider_status,
+                reason=stats.reason,
+                degraded_until=stats.degraded_until,
                 raw_count=stats.raw_count,
                 mapped_count=stats.mapped_count,
                 filtered_count=len(filtered),

@@ -47,6 +47,8 @@ class ProviderDebugInfo(BaseModel):
     name: str
     enabled: bool
     status: str
+    reason: str | None = None
+    degraded_until: datetime | None = None
     raw_count: int
     mapped_count: int
     filtered_count: int

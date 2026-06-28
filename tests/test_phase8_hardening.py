@@ -86,7 +86,18 @@ def test_sources_health_does_not_expose_secrets(monkeypatch) -> None:
     assert "another-secret" not in text
     assert payload["sources"]
     for item in payload["sources"]:
-        assert set(item.keys()) == {"name", "enabled", "configured", "status", "estado"}
+        assert {
+            "name",
+            "enabled",
+            "configured",
+            "status",
+            "estado",
+            "reason",
+            "degraded_until",
+            "consecutive_failures",
+            "last_success_at",
+            "last_failure_at",
+        }.issubset(item.keys())
 
 
 def test_sources_health_endpoint() -> None:

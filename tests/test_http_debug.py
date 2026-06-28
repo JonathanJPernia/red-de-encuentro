@@ -2,9 +2,21 @@ import httpx
 
 from app.sources.http_debug import (
     FORBIDDEN_BODY_PREVIEW_CHARS,
+    detect_block_reason,
     log_forbidden_response,
     raise_for_status_logged,
 )
+
+
+def test_detect_block_reason_cloudflare_from_response() -> None:
+    request = httpx.Request("GET", "https://example.com/")
+    response = httpx.Response(
+        403,
+        headers={"server": "cloudflare", "cf-mitigated": "challenge"},
+        text="Just a moment...",
+        request=request,
+    )
+    assert detect_block_reason(response=response) == "cloudflare_challenge"
 
 
 def test_log_forbidden_response_includes_status_headers_and_body(caplog) -> None:
