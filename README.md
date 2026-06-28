@@ -595,3 +595,67 @@ Polling solo para pruebas locales:
 ```bash
 python -m app.bot.telegram_bot
 ```
+
+## Private analytics (Fase 11)
+
+Estadísticas privadas de uso del bot y la API. Solo visibles con `ADMIN_SECRET`.
+
+### Qué se registra
+
+Cada búsqueda en `search_logs` guarda:
+
+- fuente (`telegram` / `api`)
+- query enmascarada (`maria perez` o `***5678`)
+- hash de query y de usuario (sin IDs reales ni IPs)
+- resultados, tiempo de respuesta, éxito/error
+
+**No se guarda:** query completa, cédula completa, telegram ID, IP, tokens.
+
+### Migración
+
+```bash
+alembic upgrade head
+# o
+python -m app.scripts.run_migrations
+```
+
+### Consultar stats (solo admin)
+
+```bash
+curl "https://red-de-encuentro-api.onrender.com/admin/stats?days=7" \
+  -H "X-Admin-Secret: TU_ADMIN_SECRET"
+```
+
+Respuesta ejemplo:
+
+```json
+{
+  "period_days": 7,
+  "total_searches": 120,
+  "unique_users": 45,
+  "telegram_searches": 90,
+  "api_searches": 30,
+  "successful_searches": 100,
+  "empty_results": 20,
+  "average_response_ms": 850,
+  "top_queries": [{"query": "maria perez", "count": 12}],
+  "searches_by_day": [{"date": "2026-06-27", "count": 44}]
+}
+```
+
+Sin `ADMIN_SECRET` configurado, `/admin/stats` responde **404**.
+
+## Private dashboard (Fase 12)
+
+Panel visual privado con gráficos de uso.
+
+```
+https://red-de-encuentro-api.onrender.com/admin/dashboard?secret=TU_ADMIN_SECRET
+```
+
+También disponible:
+
+- `GET /admin/dashboard-data?days=7&secret=TU_ADMIN_SECRET` → JSON
+- Header alternativo: `X-Admin-Secret: TU_ADMIN_SECRET`
+
+Muestra totales, usuarios únicos, Telegram vs API, top consultas enmascaradas, búsquedas por día y errores recientes. Sin exponer tokens, IPs, IDs de Telegram ni cédulas completas.

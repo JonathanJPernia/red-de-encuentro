@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Red de Encuentro — Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #121a2b;
+      --card-border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --green: #22c55e;
+      --blue: #38bdf8;
+      --accent: #0ea5e9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+    header { margin-bottom: 24px; }
+    h1 { margin: 0 0 8px; font-size: 1.75rem; color: var(--green); }
+    .subtitle { color: var(--muted); margin: 0; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin: 20px 0;
+    }
+    select, button {
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+    }
+    button {
+      background: linear-gradient(135deg, #059669, #0ea5e9);
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+    .card-label { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
+    .card-value { font-size: 1.6rem; font-weight: 700; color: var(--blue); }
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .chart-card h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .chart-wrap { position: relative; height: 260px; }
+    .errors { margin-top: 8px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .status { color: var(--green); font-size: 0.9rem; }
+    .error { color: #f87171; }
+    .hidden { display: none; }
+    @media (max-width: 640px) {
+      h1 { font-size: 1.4rem; }
+      .card-value { font-size: 1.3rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Red de Encuentro — Analytics</h1>
+      <p class="subtitle">Panel privado</p>
+    </header>
+
+    <div class="toolbar">
+      <label for="days">Periodo:</label>
+      <select id="days">
+        <option value="7" selected>7 días</option>
+        <option value="14">14 días</option>
+        <option value="30">30 días</option>
+      </select>
+      <button id="refresh">Actualizar</button>
+      <span id="status" class="status"></span>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="card-label">Total búsquedas</div><div class="card-value" id="total_searches">—</div></div>
+      <div class="card"><div class="card-label">Usuarios únicos</div><div class="card-value" id="unique_users">—</div></div>
+      <div class="card"><div class="card-label">Telegram</div><div class="card-value" id="telegram_searches">—</div></div>
+      <div class="card"><div class="card-label">API</div><div class="card-value" id="api_searches">—</div></div>
+      <div class="card"><div class="card-label">Exitosas</div><div class="card-value" id="successful_searches">—</div></div>
+      <div class="card"><div class="card-label">Sin resultados</div><div class="card-value" id="empty_results">—</div></div>
+      <div class="card"><div class="card-label">Tiempo promedio</div><div class="card-value" id="average_response_ms">—</div></div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <h2>Búsquedas por día</h2>
+        <div class="chart-wrap"><canvas id="chartDaily"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h2>Telegram vs API</h2>
+        <div class="chart-wrap"><canvas id="chartSources"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h2>Top consultas</h2>
+        <div class="chart-wrap"><canvas id="chartTop"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-card errors">
+      <h2>Errores recientes</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Fuente</th>
+            <th>Consulta</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody id="errorsBody"></tbody>
+      </table>
+      <p id="noErrors" class="subtitle hidden">No hay errores recientes en este periodo.</p>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const secret = params.get("secret");
+    let dailyChart, sourcesChart, topChart;
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function renderErrors(errors) {
+      const body = document.getElementById("errorsBody");
+      const empty = document.getElementById("noErrors");
+      body.innerHTML = "";
+      if (!errors.length) {
+        empty.classList.remove("hidden");
+        return;
+      }
+      empty.classList.add("hidden");
+      errors.forEach((item) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${new Date(item.created_at).toLocaleString("es-VE")}</td>
+          <td>${item.source}</td>
+          <td>${item.query_masked}</td>
+          <td class="error">${item.error_type}</td>
+        `;
+        body.appendChild(row);
+      });
+    }
+
+    function renderCharts(data) {
+      const dailyLabels = data.searches_by_day.map((item) => item.date);
+      const dailyCounts = data.searches_by_day.map((item) => item.count);
+      const topLabels = data.top_queries.map((item) => item.query);
+      const topCounts = data.top_queries.map((item) => item.count);
+
+      if (dailyChart) dailyChart.destroy();
+      if (sourcesChart) sourcesChart.destroy();
+      if (topChart) topChart.destroy();
+
+      dailyChart = new Chart(document.getElementById("chartDaily"), {
+        type: "line",
+        data: {
+          labels: dailyLabels,
+          datasets: [{
+            label: "Búsquedas",
+            data: dailyCounts,
+            borderColor: "#38bdf8",
+            backgroundColor: "rgba(56, 189, 248, 0.15)",
+            fill: true,
+            tension: 0.3,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: "#e2e8f0" } } },
+          scales: {
+            x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+            y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+          },
+        },
+      });
+
+      sourcesChart = new Chart(document.getElementById("chartSources"), {
+        type: "doughnut",
+        data: {
+          labels: ["Telegram", "API"],
+          datasets: [{
+            data: [data.telegram_searches, data.api_searches],
+            backgroundColor: ["#22c55e", "#0ea5e9"],
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: "#e2e8f0" } } },
+        },
+      });
+
+      topChart = new Chart(document.getElementById("chartTop"), {
+        type: "bar",
+        data: {
+          labels: topLabels,
+          datasets: [{
+            label: "Consultas",
+            data: topCounts,
+            backgroundColor: "#22c55e",
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+            y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+          },
+        },
+      });
+    }
+
+    async function loadData() {
+      const status = document.getElementById("status");
+      if (!secret) {
+        status.textContent = "Falta el parámetro secret en la URL.";
+        status.className = "error";
+        return;
+      }
+      const days = document.getElementById("days").value;
+      status.textContent = "Cargando...";
+      status.className = "status";
+      try {
+        const response = await fetch(`/admin/dashboard-data?days=${days}&secret=${encodeURIComponent(secret)}`);
+        if (!response.ok) throw new Error("No autorizado o sin datos");
+        const data = await response.json();
+        setText("total_searches", data.total_searches);
+        setText("unique_users", data.unique_users);
+        setText("telegram_searches", data.telegram_searches);
+        setText("api_searches", data.api_searches);
+        setText("successful_searches", data.successful_searches);
+        setText("empty_results", data.empty_results);
+        setText("average_response_ms", `${data.average_response_ms} ms`);
+        renderCharts(data);
+        renderErrors(data.recent_errors || []);
+        status.textContent = `Actualizado · últimos ${data.period_days} días`;
+      } catch (error) {
+        status.textContent = "No se pudieron cargar las estadísticas.";
+        status.className = "error";
+      }
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadData);
+    document.getElementById("days").addEventListener("change", loadData);
+    loadData();
+  </script>
+</body>
+</html>
