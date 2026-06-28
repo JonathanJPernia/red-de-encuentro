@@ -3,10 +3,11 @@ import pytest
 from app.services.name_matching import (
     BROAD_QUERY_MESSAGE,
     SCORE_ALL_TOKENS,
-    SCORE_FIRST_AND_LAST,
     SCORE_GIVEN_NAME_ONLY,
+    SCORE_SINGLE_TOKEN_MAX,
     SCORE_SURNAME_ONLY,
-    SCORE_TWO_TOKENS,
+    SCORE_TWO_TOKEN_ONE_MATCH_MAX,
+    SCORE_TWO_TOKEN_ONE_MATCH_FUZZY_MAX,
     is_broad_single_word_query,
     matching_tokens,
     score_name_match,
@@ -34,22 +35,30 @@ def test_all_tokens_match_scores_100() -> None:
     assert score_name_match("Juan Perez", "Juan Carlos Perez") == SCORE_ALL_TOKENS
 
 
-def test_first_and_last_scores_98() -> None:
-    assert score_name_match("Juan Garcia Perez", "Juan Maria Perez") == SCORE_FIRST_AND_LAST
+def test_first_and_last_scores_high_for_two_of_three() -> None:
+    score = score_name_match("Juan Garcia Perez", "Juan Maria Perez")
+    assert score is not None
+    assert 85.0 <= score <= 95.0
 
 
-def test_two_tokens_scores_95() -> None:
-    assert score_name_match("Carlos Perez Maria", "Carlos Perez Juan") == SCORE_TWO_TOKENS
+def test_two_of_three_tokens_scores_in_partial_range() -> None:
+    score = score_name_match("Carlos Perez Maria", "Carlos Perez Juan")
+    assert score is not None
+    assert 85.0 <= score <= 95.0
 
 
-def test_surname_only_scores_90() -> None:
-    assert score_name_match("Perez", "Maria Perez") == SCORE_SURNAME_ONLY
-    assert score_name_match("Juan Perez", "Maria Perez") == SCORE_SURNAME_ONLY
+def test_surname_only_scores_at_most_65_for_two_token_query() -> None:
+    assert score_name_match("Perez", "Maria Perez") == SCORE_SINGLE_TOKEN_MAX
+    score = score_name_match("Juan Perez", "Maria Perez")
+    assert score is not None
+    assert score <= SCORE_TWO_TOKEN_ONE_MATCH_FUZZY_MAX
 
 
-def test_given_name_only_scores_80() -> None:
-    assert score_name_match("Juan", "Juan Carlos") == SCORE_GIVEN_NAME_ONLY
-    assert score_name_match("Juan Perez", "Juan Maria") == SCORE_GIVEN_NAME_ONLY
+def test_given_name_only_scores_at_most_65_for_two_token_query() -> None:
+    assert score_name_match("Juan", "Juan Carlos") == SCORE_SINGLE_TOKEN_MAX
+    score = score_name_match("Juan Perez", "Juan Maria")
+    assert score is not None
+    assert score <= SCORE_TWO_TOKEN_ONE_MATCH_FUZZY_MAX
 
 
 def test_single_word_contains_only() -> None:
@@ -65,7 +74,9 @@ def test_ranking_favors_complete_matches() -> None:
         score_name_match("Juan Perez", "Juan Maria"),
         score_name_match("Juan Perez", "Maria Perez"),
     ]
-    assert scores == [SCORE_ALL_TOKENS, SCORE_GIVEN_NAME_ONLY, SCORE_SURNAME_ONLY]
+    assert scores[0] == SCORE_ALL_TOKENS
+    assert scores[1] is not None and scores[1] <= SCORE_TWO_TOKEN_ONE_MATCH_FUZZY_MAX
+    assert scores[2] is not None and scores[2] <= SCORE_TWO_TOKEN_ONE_MATCH_FUZZY_MAX
     assert scores[0] > scores[1]
     assert scores[0] > scores[2]
 

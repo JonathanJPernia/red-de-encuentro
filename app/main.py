@@ -78,21 +78,26 @@ def sources_health() -> dict:
     return get_sources_health()
 
 
-@app.get("/search", response_model=SearchResponse)
+@app.get("/search", response_model=SearchResponse, response_model_exclude_none=True)
 def search_people(
     request: Request,
     q: str = Query(..., min_length=1, description="Nombre o cédula (solo números)"),
+    debug: bool = Query(default=False, description="Stats por fuente (requiere ADMIN_SECRET)"),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     started = time.perf_counter()
     client_ip = _client_ip(request)
+    include_debug = False
+    if debug:
+        verify_admin_secret(request)
+        include_debug = True
 
     def _elapsed_ms() -> int:
         return int((time.perf_counter() - started) * 1000)
 
     try:
         service = SearchService(db)
-        response = service.search(q)
+        response = service.search(q, include_debug=include_debug)
         log_search(
             db,
             source="api",

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.config import get_settings
 from app.schemas.search import PersonMatch, SourceMatch
+from app.services.query_scoring import score_query_match
 from app.services.normalize_service import (
     document_id_last4,
     extract_document_from_text,
@@ -50,6 +51,7 @@ class RedAyudaVenezuelaSource(BaseExternalSource):
     source_page_url = SOURCE_PAGE_URL
 
     def __init__(self) -> None:
+        super().__init__()
         settings = get_settings()
         self.client = SupabaseClient(
             base_url=settings.red_ayuda_supabase_url,
@@ -107,18 +109,7 @@ def _map_row(row: dict, query: str) -> ExternalRecord:
 
 
 def _score_match(full_name: str, document_id: str | None, query: str) -> float:
-    if is_document_query(query) and document_id:
-        query_digits = normalize_document_id(query)
-        if query_digits == normalize_document_id(document_id):
-            return 100.0
-
-    normalized_query = normalize_name(query)
-    normalized_name = normalize_name(full_name)
-    if normalized_query == normalized_name:
-        return 95.0
-    if normalized_query in normalized_name:
-        return 80.0
-    return 80.0
+    return score_query_match(query, full_name, document_id)
 
 
 def _to_person_match(record: ExternalRecord) -> PersonMatch:

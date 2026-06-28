@@ -1,16 +1,20 @@
 import logging
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.models import Appearance, Person
-from app.schemas.search import PersonMatch, SearchResponse, SourceMatch
+from app.schemas.search import PersonMatch, ProviderDebugInfo, SearchDebugInfo, SearchResponse, SourceMatch
 from app.services.match_consolidation import consolidate_matches, rank_matches
 from app.services.name_matching import (
     BROAD_QUERY_MESSAGE,
     is_broad_single_word_query,
+    is_single_token_query,
+    min_score_for_query,
     score_name_match,
+    tokenize,
 )
 from app.services.normalize_service import (
     hash_document_id,
@@ -19,14 +23,27 @@ from app.services.normalize_service import (
 )
 from app.services.privacy_log import mask_query_for_log
 from app.services.query_validation import validate_search_query
-from app.sources.registry import get_external_sources
+from app.sources.base_external_source import BaseExternalSource
+from app.sources.registry import OPTIONAL_SOURCE_FLAGS
 
 logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 10
 BOT_MAX_RESULTS = 5
 SCORE_EXACT_DOCUMENT = 100.0
-MIN_NAME_SCORE = 80.0
+MIN_RELEVANT_SCORE = 80.0
+
+
+@dataclass
+class _ProviderRunResult:
+    matches: list[PersonMatch]
+    info: ProviderDebugInfo
+
+
+@dataclass
+class _ExternalSearchOutcome:
+    matches: list[PersonMatch]
+    providers: list[ProviderDebugInfo]
 
 
 class SearchService:
@@ -34,13 +51,21 @@ class SearchService:
         self.db = db
         self.settings = get_settings()
 
-    def search(self, query: str, limit: int = MAX_RESULTS) -> SearchResponse:
+    def search(
+        self,
+        query: str,
+        limit: int = MAX_RESULTS,
+        *,
+        include_debug: bool = False,
+    ) -> SearchResponse:
         stripped = query.strip()
         if not stripped:
             return SearchResponse(query=query, matches=[])
 
         validate_search_query(stripped)
         logger.info("Búsqueda q=%s", mask_query_for_log(stripped))
+
+        debug_info: SearchDebugInfo | None = None
 
         if is_document_query(stripped):
             matches = self._search_local_by_document(stripped, limit=limit)
@@ -53,43 +78,118 @@ class SearchService:
             response_query = stripped
 
         if self.settings.enable_external_sources and not is_broad_single_word_query(stripped):
-            external_matches = self._search_external_providers(stripped)
-            if is_document_query(stripped):
-                matches = matches + external_matches
-            else:
-                matches = matches + self._filter_name_matches(stripped, external_matches)
+            outcome = self._search_external_providers(stripped)
+            if include_debug:
+                debug_info = SearchDebugInfo(providers=outcome.providers)
 
+            if is_document_query(stripped):
+                matches = matches + outcome.matches
+            else:
+                matches = matches + outcome.matches
+
+        matches = self._apply_name_filters(stripped, matches)
         matches = consolidate_matches(matches)
         matches = rank_matches(matches, stripped)
 
-        return SearchResponse(query=response_query, matches=matches[:limit])
+        return SearchResponse(
+            query=response_query,
+            matches=matches[:limit],
+            debug=debug_info,
+        )
+
+    def _apply_name_filters(self, query: str, matches: list[PersonMatch]) -> list[PersonMatch]:
+        if is_document_query(query):
+            return matches
+
+        threshold = min_score_for_query(query)
+        filtered = [match for match in matches if match.confidence_score >= threshold]
+
+        if is_single_token_query(query):
+            return filtered
+
+        if len(tokenize(query)) >= 2:
+            if filtered and max(match.confidence_score for match in filtered) < MIN_RELEVANT_SCORE:
+                raise ValueError(BROAD_QUERY_MESSAGE)
+
+        return filtered
+
+    def _score_and_filter_match(self, query: str, match: PersonMatch) -> PersonMatch | None:
+        score = score_name_match(query, match.full_name)
+        if score is None:
+            return None
+        return match.model_copy(update={"confidence_score": round(score, 2)})
 
     def _filter_name_matches(self, query: str, matches: list[PersonMatch]) -> list[PersonMatch]:
         filtered: list[PersonMatch] = []
         for match in matches:
-            score = score_name_match(query, match.full_name)
-            if score is None or score < MIN_NAME_SCORE:
-                continue
-            filtered.append(
-                match.model_copy(update={"confidence_score": round(score, 2)})
-            )
+            scored = self._score_and_filter_match(query, match)
+            if scored is not None:
+                filtered.append(scored)
         return filtered
 
-    def _search_external_providers(self, query: str) -> list[PersonMatch]:
+    def _search_external_providers(self, query: str) -> _ExternalSearchOutcome:
         if is_broad_single_word_query(query):
-            return []
+            return _ExternalSearchOutcome(matches=[], providers=[])
 
         results: list[PersonMatch] = []
-        for provider in get_external_sources():
-            provider_matches = provider.safe_search(query)
-            logger.info(
-                "Fuente externa %s: %s resultados para q=%s",
-                provider.source_name,
-                len(provider_matches),
-                mask_query_for_log(query),
+        providers: list[ProviderDebugInfo] = []
+
+        for provider in self._all_external_providers():
+            provider_result = self._run_external_provider(provider, query)
+            providers.append(provider_result.info)
+            results.extend(provider_result.matches)
+
+        return _ExternalSearchOutcome(matches=results, providers=providers)
+
+    def _all_external_providers(self) -> list[BaseExternalSource]:
+        return [source_cls() for source_cls in OPTIONAL_SOURCE_FLAGS]
+
+    def _run_external_provider(
+        self,
+        provider: BaseExternalSource,
+        query: str,
+    ) -> _ProviderRunResult:
+        enabled = provider.is_configured()
+        if not enabled:
+            return _ProviderRunResult(
+                matches=[],
+                info=ProviderDebugInfo(
+                    name=provider.source_name,
+                    enabled=False,
+                    status="skipped",
+                    raw_count=0,
+                    mapped_count=0,
+                    filtered_count=0,
+                    error=None,
+                ),
             )
-            results.extend(provider_matches)
-        return results
+
+        provider_matches = provider.safe_search(query)
+        stats = provider.last_search_stats
+        filtered = self._filter_name_matches(query, provider_matches)
+
+        logger.info(
+            "Fuente externa %s: raw=%s mapped=%s filtered=%s q=%s",
+            provider.source_name,
+            stats.raw_count,
+            stats.mapped_count,
+            len(filtered),
+            mask_query_for_log(query),
+        )
+
+        status = "error" if stats.error else "ok"
+        return _ProviderRunResult(
+            matches=filtered,
+            info=ProviderDebugInfo(
+                name=provider.source_name,
+                enabled=True,
+                status=status,
+                raw_count=stats.raw_count,
+                mapped_count=stats.mapped_count,
+                filtered_count=len(filtered),
+                error=stats.error,
+            ),
+        )
 
     def _person_query(self):
         return select(Person).options(
@@ -129,7 +229,7 @@ class SearchService:
         ranked: dict[int, float] = {}
         for person in persons:
             score = score_name_match(name, person.full_name)
-            if score is None or score < MIN_NAME_SCORE:
+            if score is None:
                 continue
             ranked[person.id] = max(ranked.get(person.id, 0), score)
 

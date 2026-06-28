@@ -10,6 +10,8 @@ import httpx
 
 from app.config import get_settings
 from app.schemas.search import PersonMatch, SourceMatch
+from app.services.name_matching import tokenize
+from app.services.query_scoring import score_query_match
 from app.services.normalize_service import (
     document_id_last4,
     hash_document_id,
@@ -70,6 +72,7 @@ class VenezuelaTeBuscaSource(BaseExternalSource):
     _last_request_at: float = 0.0
 
     def __init__(self) -> None:
+        super().__init__()
         settings = get_settings()
         self.base_url = settings.venezuela_te_busca_base_url.rstrip("/")
         self.timeout = DEFAULT_TIMEOUT
@@ -80,12 +83,9 @@ class VenezuelaTeBuscaSource(BaseExternalSource):
 
     def search(self, query: str) -> list[PersonMatch]:
         validate_search_query(query)
-        raw_text = self._fetch_root_data(query.strip())
-        try:
-            persons = parse_remix_root_data(raw_text)
-        except Exception:
-            logger.exception("Venezuela Te Busca: parser falló")
-            return []
+        self._ensure_search_stats()
+        persons = self._fetch_persons(query.strip())
+        self.last_search_stats.raw_count = len(persons)
 
         matches: list[PersonMatch] = []
         for person in persons:
@@ -97,7 +97,32 @@ class VenezuelaTeBuscaSource(BaseExternalSource):
                     "Venezuela Te Busca: fila inválida id=%s",
                     person.get("id"),
                 )
+        self.last_search_stats.mapped_count = len(matches)
         return matches
+
+    def _fetch_persons(self, query: str) -> list[dict[str, Any]]:
+        primary_query = query.strip()
+        persons = self._parse_root_data(primary_query)
+        if persons:
+            return persons
+
+        normalized_query = " ".join(tokenize(primary_query))
+        if not normalized_query or normalized_query == primary_query:
+            return []
+
+        logger.info(
+            "Venezuela Te Busca: reintento con query normalizada q=%s",
+            normalized_query,
+        )
+        return self._parse_root_data(normalized_query)
+
+    def _parse_root_data(self, query: str) -> list[dict[str, Any]]:
+        raw_text = self._fetch_root_data(query)
+        try:
+            return parse_remix_root_data(raw_text)
+        except Exception:
+            logger.exception("Venezuela Te Busca: parser falló")
+            return []
 
     def _fetch_root_data(self, query: str) -> str:
         params = {"query": query}
@@ -222,17 +247,7 @@ def _build_safe_raw_data(person: dict[str, Any]) -> dict | None:
 
 
 def _score_match(full_name: str, document_id: str | None, query: str) -> float:
-    if is_document_query(query) and document_id:
-        if normalize_document_id(query) == normalize_document_id(document_id):
-            return 100.0
-
-    normalized_query = normalize_name(query)
-    normalized_name = normalize_name(full_name)
-    if normalized_query == normalized_name:
-        return 95.0
-    if normalized_query in normalized_name:
-        return 80.0
-    return 80.0
+    return score_query_match(query, full_name, document_id)
 
 
 def _to_person_match(record: ExternalRecord) -> PersonMatch:

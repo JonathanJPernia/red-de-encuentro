@@ -18,6 +18,7 @@ from app.services.normalize_service import (
     normalize_name,
     sanitize_raw_data,
 )
+from app.services.query_scoring import score_query_match
 from app.services.query_validation import validate_search_query
 from app.sources.base_external_source import BaseExternalSource, ExternalRecord
 
@@ -78,6 +79,7 @@ class DesaparecidosTerremotoVenezuelaSource(BaseExternalSource):
     _last_request_at: float = 0.0
 
     def __init__(self) -> None:
+        super().__init__()
         settings = get_settings()
         self.api_base_url = settings.desaparecidos_terremoto_base_url.rstrip("/")
         self.public_base_url = settings.desaparecidos_terremoto_public_url.rstrip("/")
@@ -222,17 +224,7 @@ def _build_safe_raw_data(item: dict) -> dict | None:
 
 
 def _score_match(full_name: str, document_id: str | None, query: str) -> float:
-    if is_document_query(query) and document_id:
-        if normalize_document_id(query) == normalize_document_id(document_id):
-            return 100.0
-
-    normalized_query = normalize_name(query)
-    normalized_name = normalize_name(full_name)
-    if normalized_query == normalized_name:
-        return 95.0
-    if normalized_query in normalized_name:
-        return 80.0
-    return 80.0
+    return score_query_match(query, full_name, document_id)
 
 
 def _to_person_match(record: ExternalRecord) -> PersonMatch:

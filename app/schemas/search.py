@@ -40,3 +40,18 @@ class SearchResponse(BaseModel):
     query: str
     matches: list[PersonMatch]
     disclaimer: str = Field(default=INFORMATIONAL_DISCLAIMER)
+    debug: "SearchDebugInfo | None" = None
+
+
+class ProviderDebugInfo(BaseModel):
+    name: str
+    enabled: bool
+    status: str
+    raw_count: int
+    mapped_count: int
+    filtered_count: int
+    error: str | None = None
+
+
+class SearchDebugInfo(BaseModel):
+    providers: list[ProviderDebugInfo]
